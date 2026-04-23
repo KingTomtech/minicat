@@ -1,0 +1,851 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lenco v2.1 • Admin Dashboard</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/@supabase/supabase-js@2.45.0/dist/umd/supabase.min.js"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    * { font-family: 'Inter', system-ui, sans-serif; }
+    .gradient-bg { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); }
+    .glass { background: rgba(30, 41, 59, 0.9); backdrop-filter: blur(16px); border: 1px solid rgba(148, 163, 184, 0.25); }
+    .glass-hover:hover { background: rgba(30, 41, 59, 0.95); }
+    .animate-pulse-slow { animation: pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    .loader { border: 3px solid rgba(255,255,255,0.1); border-top-color: #3b82f6; border-radius: 50%; width: 24px; height: 24px; animation: spin 1s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .modal-overlay { background: rgba(0,0,0,0.75); backdrop-filter: blur(4px); }
+    .status-badge { padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: 500; }
+    .status-pending { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+    .status-success { background: rgba(16, 185, 129, 0.2); color: #10b981; }
+    .status-failed { background: rgba(239, 68, 68, 0.2); color: #ef4444; }
+    .status-pay-offline { background: rgba(139, 92, 246, 0.2); color: #a855f7; }
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); }
+    ::-webkit-scrollbar-thumb { background: rgba(71, 85, 105, 0.8); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: rgba(100, 116, 139, 0.8); }
+    
+    /* Toast Notifications */
+    .toast-container { position: fixed; top: 20px; right: 20px; z-index: 100; display: flex; flex-direction: column; gap: 10px; }
+    .toast { padding: 16px 20px; border-radius: 12px; font-size: 14px; font-weight: 500; box-shadow: 0 10px 40px rgba(0,0,0,0.3); animation: slideIn 0.3s ease-out; display: flex; align-items: center; gap: 10px; min-width: 300px; }
+    .toast-success { background: rgba(16, 185, 129, 0.9); color: white; border: 1px solid rgba(16, 185, 129, 0.3); }
+    .toast-error { background: rgba(239, 68, 68, 0.9); color: white; border: 1px solid rgba(239, 68, 68, 0.3); }
+    .toast-info { background: rgba(59, 130, 246, 0.9); color: white; border: 1px solid rgba(59, 130, 246, 0.3); }
+    @keyframes slideIn { from { transform: translateX(100%); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+    @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; } }
+  </style>
+</head>
+<body class="gradient-bg min-h-screen text-slate-200">
+  
+  <!-- Toast Container -->
+  <div id="toast-container" class="toast-container"></div>
+
+  <!-- AUTH SCREEN -->
+  <div id="auth-screen" class="min-h-screen flex items-center justify-center p-6">
+    <div class="glass max-w-md w-full rounded-3xl p-8 shadow-2xl">
+      <div class="flex items-center gap-3 mb-8">
+        <div class="text-4xl">💸</div>
+        <div>
+          <h1 class="text-3xl font-bold text-white">Lenco v2.1</h1>
+          <p class="text-slate-400 text-sm">Admin Dashboard</p>
+        </div>
+      </div>
+      
+      <form onsubmit="app.login(event)">
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-slate-300 mb-2">Email Address</label>
+          <input id="email" type="email" required placeholder="admin@yourcompany.zm" 
+            class="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-5 py-4 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all">
+        </div>
+        <div class="mb-6">
+          <label class="block text-sm font-medium text-slate-300 mb-2">Password</label>
+          <input id="password" type="password" required placeholder="••••••••" 
+            class="w-full bg-slate-900/50 border border-slate-700 rounded-2xl px-5 py-4 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-all">
+        </div>
+        <button type="submit" id="login-btn" class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 py-4 rounded-2xl font-semibold text-lg text-white transition-all flex items-center justify-center gap-2">
+          <span>Sign In</span>
+          <span class="loader hidden" id="login-loader"></span>
+        </button>
+      </form>
+      
+      <div id="login-error" class="mt-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm hidden"></div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD SCREEN -->
+  <div id="dashboard-screen" class="hidden min-h-screen flex flex-col">
+    <!-- Header -->
+    <header class="glass sticky top-0 z-50 border-b border-slate-700/50">
+      <div class="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+        <div class="flex items-center gap-3">
+          <span class="text-3xl">💸</span>
+          <div>
+            <span class="font-bold text-2xl text-white">Lenco Admin</span>
+            <p class="text-xs text-slate-400">v2.1 Dashboard</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-4">
+          <div class="text-right">
+            <p id="user-email" class="text-slate-300 text-sm font-medium"></p>
+            <p id="org-name" class="text-xs text-slate-500"></p>
+          </div>
+          <button onclick="app.logout()" class="px-5 py-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-sm font-medium transition-all">Logout</button>
+        </div>
+      </div>
+    </header>
+
+    <main class="flex-1 max-w-7xl mx-auto w-full px-6 py-8">
+      <!-- Stats Cards -->
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div class="glass rounded-3xl p-6 glass-hover transition-all">
+          <div class="flex items-center justify-between mb-4">
+            <p class="text-slate-400 text-sm">Total Balance</p>
+            <span class="text-2xl">💰</span>
+          </div>
+          <p id="total-balance" class="text-4xl font-bold text-white">ZMW 0.00</p>
+          <p id="balance-change" class="text-xs text-emerald-400 mt-2 hidden">↑ +0.00% today</p>
+        </div>
+        
+        <div class="glass rounded-3xl p-6 glass-hover transition-all">
+          <div class="flex items-center justify-between mb-4">
+            <p class="text-slate-400 text-sm">Pending</p>
+            <span class="text-2xl">⏳</span>
+          </div>
+          <p id="pending-count" class="text-4xl font-bold text-amber-400">0</p>
+          <p class="text-xs text-slate-500 mt-2">Awaiting completion</p>
+        </div>
+        
+        <div class="glass rounded-3xl p-6 glass-hover transition-all">
+          <div class="flex items-center justify-between mb-4">
+            <p class="text-slate-400 text-sm">Successful Today</p>
+            <span class="text-2xl">✅</span>
+          </div>
+          <p id="success-count" class="text-4xl font-bold text-emerald-400">0</p>
+          <p id="success-amount" class="text-xs text-emerald-400 mt-2">ZMW 0.00</p>
+        </div>
+        
+        <div class="glass rounded-3xl p-6 glass-hover transition-all">
+          <div class="flex items-center justify-between mb-4">
+            <p class="text-slate-400 text-sm">Failed Today</p>
+            <span class="text-2xl">❌</span>
+          </div>
+          <p id="failed-count" class="text-4xl font-bold text-red-400">0</p>
+          <p class="text-xs text-slate-500 mt-2">Requires attention</p>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex flex-wrap gap-4 mb-6">
+        <button onclick="app.openModal('collect-mobile')" class="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 rounded-2xl font-medium transition-all flex items-center gap-2">
+          <span>📱</span>
+          <span>Mobile Money Collection</span>
+        </button>
+        <button onclick="app.openModal('collect-card')" class="px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded-2xl font-medium transition-all flex items-center gap-2">
+          <span>💳</span>
+          <span>Card Collection</span>
+        </button>
+        <button onclick="app.refreshData()" class="px-6 py-3 bg-slate-700 hover:bg-slate-600 rounded-2xl font-medium transition-all flex items-center gap-2">
+          <span id="refresh-icon">🔄</span>
+          <span>Refresh</span>
+        </button>
+        <div class="flex-1"></div>
+        <div class="relative">
+          <input type="text" id="search-input" placeholder="Search reference..." 
+            class="bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-sm text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 w-64"
+            oninput="app.filterCollections()">
+        </div>
+      </div>
+
+      <!-- Collections Table -->
+      <div class="glass rounded-3xl p-6 overflow-hidden">
+        <div class="flex items-center justify-between mb-6">
+          <h2 class="text-xl font-semibold text-white">Recent Collections</h2>
+          <div class="flex items-center gap-2">
+            <select id="status-filter" onchange="app.filterCollections()" 
+              class="bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+              <option value="">All Statuses</option>
+              <option value="pending">Pending</option>
+              <option value="pay-offline">Pay Offline</option>
+              <option value="success">Success</option>
+              <option value="failed">Failed</option>
+            </select>
+            <select id="channel-filter" onchange="app.filterCollections()" 
+              class="bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-2 text-sm text-white focus:outline-none focus:border-blue-500">
+              <option value="">All Channels</option>
+              <option value="mobile-money">Mobile Money</option>
+              <option value="card">Card</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="overflow-x-auto">
+          <table class="w-full">
+            <thead>
+              <tr class="text-xs text-slate-400 border-b border-slate-700">
+                <th class="text-left py-4 px-4 font-medium">Reference</th>
+                <th class="text-left py-4 px-4 font-medium">Channel</th>
+                <th class="text-left py-4 px-4 font-medium">Details</th>
+                <th class="text-left py-4 px-4 font-medium">Amount</th>
+                <th class="text-left py-4 px-4 font-medium">Status</th>
+                <th class="text-left py-4 px-4 font-medium">Date</th>
+                <th class="text-left py-4 px-4 font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="collections-body" class="divide-y divide-slate-700 text-sm">
+              <tr>
+                <td colspan="7" class="py-12 text-center">
+                  <div class="loader mx-auto mb-4"></div>
+                  <p class="text-slate-400">Loading collections...</p>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        
+        <div id="empty-state" class="hidden py-12 text-center">
+          <span class="text-6xl mb-4 block">📭</span>
+          <p class="text-slate-400 text-lg">No collections found</p>
+          <p class="text-slate-500 text-sm mt-2">Start by creating a new collection</p>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- MODAL: Mobile Money Collection -->
+  <div id="modal-collect-mobile" class="hidden fixed inset-0 modal-overlay z-50 flex items-center justify-center p-6">
+    <div class="glass max-w-lg w-full rounded-3xl p-8 shadow-2xl">
+      <div class="flex items-center justify-between mb-6">
+        <h3 class="text-2xl font-bold text-white flex items-center gap-3">
+          <span class="text-3xl">📱</span>
+          Mobile Money Collection
+        </h3>
+        <button onclick="app.closeModal('collect-mobile')" class="text-slate-400 hover:text-white transition-all">✕</button>
+      </div>
+      
+      <form onsubmit="app.createMobileCollection(event)">
+        <div class="grid grid-cols-2 gap-4 mb-4">
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-2">Amount (ZMW) *</label>
+            <input type="number" step="0.01" id="mm-amount" required min="0.01" 
+              class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500">
+          </div>
+          <div>
+            <label class="block text-sm font-medium text-slate-300 mb-2">Operator *</label>
+            <select id="mm-operator" required 
+              class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500">
+              <option value="">Select operator</option>
+              <option value="mtn">MTN Mobile Money</option>
+              <option value="airtel">Airtel Money</option>
+              <option value="zamtel">Zamtel Kwacha</option>
+            </select>
+          </div>
+        </div>
+        
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-slate-300 mb-2">Phone Number *</label>
+          <input type="tel" id="mm-phone" required placeholder="+260XXXXXXXXX" 
+            class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500">
+        </div>
+        
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-slate-300 mb-2">External Reference *</label>
+          <input type="text" id="mm-reference" required placeholder="Your unique reference" 
+            class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500">
+        </div>
+        
+        <div class="mb-6">
+          <label class="block text-sm font-medium text-slate-300 mb-2">Narration</label>
+          <input type="text" id="mm-narration" placeholder="Payment description" 
+            class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500">
+        </div>
+        
+        <div class="mb-6">
+          <label class="block text-sm font-medium text-slate-300 mb-2">Fee Bearer</label>
+          <select id="mm-bearer" 
+            class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500">
+            <option value="merchant">Merchant Pays</option>
+            <option value="customer">Customer Pays</option>
+          </select>
+        </div>
+        
+        <div id="mm-error" class="mb-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm hidden"></div>
+        
+        <div class="flex gap-3">
+          <button type="button" onclick="app.closeModal('collect-mobile')" 
+            class="flex-1 px-6 py-3 bg-slate-700 hover:bg-slate-600 rounded-xl font-medium transition-all">Cancel</button>
+          <button type="submit" id="mm-submit-btn" 
+            class="flex-1 px-6 py-3 bg-emerald-600 hover:bg-emerald-700 rounded-xl font-medium transition-all flex items-center justify-center gap-2">
+            <span>Create Collection</span>
+            <span class="loader hidden" id="mm-loader"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Card Collection -->
+  <div id="modal-collect-card" class="hidden fixed inset-0 modal-overlay z-50 flex items-center justify-center p-6">
+    <div class="glass max-w-lg w-full rounded-3xl p-8 shadow-2xl">
+      <div class="flex items-center justify-between mb-6">
+        <h3 class="text-2xl font-bold text-white flex items-center gap-3">
+          <span class="text-3xl">💳</span>
+          Card Collection
+        </h3>
+        <button onclick="app.closeModal('collect-card')" class="text-slate-400 hover:text-white transition-all">✕</button>
+      </div>
+      
+      <form onsubmit="app.createCardCollection(event)">
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-slate-300 mb-2">Amount (ZMW) *</label>
+          <input type="number" step="0.01" id="card-amount" required min="0.01" 
+            class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500">
+        </div>
+        
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-slate-300 mb-2">External Reference *</label>
+          <input type="text" id="card-reference" required placeholder="Your unique reference" 
+            class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500">
+        </div>
+        
+        <div class="mb-4">
+          <label class="block text-sm font-medium text-slate-300 mb-2">Encrypted Card Data (JWE) *</label>
+          <textarea id="card-encrypted" required rows="4" placeholder="Paste encrypted card data here" 
+            class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 font-mono text-xs"></textarea>
+          <p class="text-xs text-slate-500 mt-2">Use Lenco's encryption library to encrypt card details</p>
+        </div>
+        
+        <div class="mb-6">
+          <label class="block text-sm font-medium text-slate-300 mb-2">Narration</label>
+          <input type="text" id="card-narration" placeholder="Payment description" 
+            class="w-full bg-slate-900/50 border border-slate-700 rounded-xl px-4 py-3 text-white placeholder-slate-500 focus:outline-none focus:border-blue-500">
+        </div>
+        
+        <div id="card-error" class="mb-4 p-4 bg-red-500/10 border border-red-500/20 rounded-xl text-red-400 text-sm hidden"></div>
+        
+        <div class="flex gap-3">
+          <button type="button" onclick="app.closeModal('collect-card')" 
+            class="flex-1 px-6 py-3 bg-slate-700 hover:bg-slate-600 rounded-xl font-medium transition-all">Cancel</button>
+          <button type="submit" id="card-submit-btn" 
+            class="flex-1 px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded-xl font-medium transition-all flex items-center justify-center gap-2">
+            <span>Create Collection</span>
+            <span class="loader hidden" id="card-loader"></span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Collection Details -->
+  <div id="modal-details" class="hidden fixed inset-0 modal-overlay z-50 flex items-center justify-center p-6">
+    <div class="glass max-w-2xl w-full rounded-3xl p-8 shadow-2xl max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between mb-6">
+        <h3 class="text-2xl font-bold text-white">Collection Details</h3>
+        <button onclick="app.closeModal('details')" class="text-slate-400 hover:text-white transition-all">✕</button>
+      </div>
+      
+      <div id="details-content" class="space-y-4">
+        <!-- Populated dynamically -->
+      </div>
+      
+      <div class="mt-6 pt-6 border-t border-slate-700 flex gap-3">
+        <button onclick="app.closeModal('details')" 
+          class="flex-1 px-6 py-3 bg-slate-700 hover:bg-slate-600 rounded-xl font-medium transition-all">Close</button>
+        <button onclick="app.checkStatusFromModal()" id="check-status-btn"
+          class="flex-1 px-6 py-3 bg-blue-600 hover:bg-blue-700 rounded-xl font-medium transition-all flex items-center justify-center gap-2">
+          <span>🔄</span>
+          <span>Check Status</span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const WORKER_URL = "https://lenco.nickchansa24.workers.dev";
+    
+    // Your Organization ID - hardcoded from your Supabase setup
+    const ORGANIZATION_ID = "67e9f077-4fcc-4741-b20a-64be71230892";
+
+    const app = {
+      supabase: null,
+      currentOrgId: ORGANIZATION_ID,
+      collections: [],
+      filteredCollections: [],
+      selectedCollection: null,
+      configLoaded: false,
+
+      async login(event) {
+        event.preventDefault();
+        const email = document.getElementById("email").value;
+        const password = document.getElementById("password").value;
+        const btn = document.getElementById("login-btn");
+        const loader = document.getElementById("login-loader");
+        const errorDiv = document.getElementById("login-error");
+
+        btn.disabled = true;
+        loader.classList.remove("hidden");
+        errorDiv.classList.add("hidden");
+
+        try {
+          // Fetch Supabase config from worker's /config endpoint
+          const configRes = await fetch(`${WORKER_URL}/config`);
+          if (!configRes.ok) throw new Error("Failed to fetch configuration");
+          const config = await configRes.json();
+
+          this.supabase = Supabase.createClient(config.supabase_url, config.supabase_anon_key);
+
+          const { data, error } = await this.supabase.auth.signInWithPassword({ email, password });
+          if (error) throw error;
+
+          // Store org info
+          this.currentOrgId = ORGANIZATION_ID;
+          localStorage.setItem('lenco_org_id', ORGANIZATION_ID);
+
+          document.getElementById("auth-screen").classList.add("hidden");
+          document.getElementById("dashboard-screen").classList.remove("hidden");
+          document.getElementById("user-email").textContent = email;
+          document.getElementById("org-name").textContent = "Organization: " + ORGANIZATION_ID.slice(0, 8) + "...";
+
+          await this.loadDashboard();
+        } catch (err) {
+          errorDiv.textContent = err.message;
+          errorDiv.classList.remove("hidden");
+          console.error(err);
+        } finally {
+          btn.disabled = false;
+          loader.classList.add("hidden");
+        }
+      },
+
+      async loadDashboard() {
+        await this.loadCollections();
+        this.calculateStats();
+      },
+
+      async loadCollections() {
+        const tbody = document.getElementById("collections-body");
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="7" class="py-12 text-center">
+              <div class="loader mx-auto mb-4"></div>
+              <p class="text-slate-400">Loading collections...</p>
+            </td>
+          </tr>
+        `;
+
+        try {
+          const url = `${WORKER_URL}/api/collections?organization_id=${this.currentOrgId}`;
+          const res = await fetch(url);
+          if (!res.ok) throw new Error("Failed to load collections");
+          const json = await res.json();
+
+          this.collections = json.data || [];
+          this.filteredCollections = [...this.collections];
+          
+          this.renderCollections();
+          this.calculateStats();
+        } catch (err) {
+          console.error("Failed to load collections:", err);
+          tbody.innerHTML = `
+            <tr>
+              <td colspan="7" class="py-12 text-center">
+                <span class="text-4xl mb-4 block">⚠️</span>
+                <p class="text-red-400">Failed to load collections</p>
+                <p class="text-slate-500 text-sm mt-2">${err.message}</p>
+                <button onclick="app.refreshData()" class="mt-4 px-6 py-2 bg-blue-600 hover:bg-blue-700 rounded-xl text-sm">Retry</button>
+              </td>
+            </tr>
+          `;
+        }
+      },
+
+      renderCollections() {
+        const tbody = document.getElementById("collections-body");
+        const emptyState = document.getElementById("empty-state");
+
+        if (this.filteredCollections.length === 0) {
+          tbody.innerHTML = "";
+          emptyState.classList.remove("hidden");
+          return;
+        }
+
+        emptyState.classList.add("hidden");
+        tbody.innerHTML = this.filteredCollections.map(c => {
+          const statusClass = {
+            'pending': 'status-pending',
+            'success': 'status-success',
+            'failed': 'status-failed',
+            'pay-offline': 'status-pay-offline'
+          }[c.status] || 'status-pending';
+
+          const channelIcon = c.channel === 'mobile-money' ? '📱' : '💳';
+          const details = c.channel === 'mobile-money' 
+            ? `${c.operator || ''} ${c.phone || ''}`.trim()
+            : 'Card Payment';
+
+          return `
+            <tr class="border-b border-slate-700/50 hover:bg-slate-800/30 transition-all">
+              <td class="px-4 py-4 font-mono text-xs text-blue-400">${c.reference}</td>
+              <td class="px-4 py-4">
+                <span class="flex items-center gap-2">
+                  <span>${channelIcon}</span>
+                  <span class="capitalize">${c.channel.replace('-', ' ')}</span>
+                </span>
+              </td>
+              <td class="px-4 py-4 text-slate-400 text-xs">${details}</td>
+              <td class="px-4 py-4 font-semibold text-white">ZMW ${Number(c.amount).toFixed(2)}</td>
+              <td class="px-4 py-4">
+                <span class="status-badge ${statusClass}">${c.status}</span>
+              </td>
+              <td class="px-4 py-4 text-xs text-slate-400">
+                ${new Date(c.initiated_at).toLocaleDateString()}<br>
+                <span class="text-slate-500">${new Date(c.initiated_at).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+              </td>
+              <td class="px-4 py-4">
+                <button onclick="app.viewDetails('${c.reference}')" 
+                  class="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 rounded-lg text-xs transition-all">
+                  View
+                </button>
+              </td>
+            </tr>
+          `;
+        }).join('');
+      },
+
+      calculateStats() {
+        const today = new Date().toDateString();
+        
+        const successfulToday = this.collections.filter(c => 
+          c.status === 'success' && new Date(c.initiated_at).toDateString() === today
+        );
+        
+        const failedToday = this.collections.filter(c => 
+          c.status === 'failed' && new Date(c.initiated_at).toDateString() === today
+        );
+        
+        const pending = this.collections.filter(c => 
+          c.status === 'pending' || c.status === 'pay-offline'
+        );
+
+        const totalBalance = successfulToday.reduce((sum, c) => sum + parseFloat(c.amount || 0), 0);
+        const successAmount = successfulToday.reduce((sum, c) => sum + parseFloat(c.amount || 0), 0);
+
+        document.getElementById("total-balance").textContent = `ZMW ${totalBalance.toFixed(2)}`;
+        document.getElementById("pending-count").textContent = pending.length;
+        document.getElementById("success-count").textContent = successfulToday.length;
+        document.getElementById("success-amount").textContent = `ZMW ${successAmount.toFixed(2)}`;
+        document.getElementById("failed-count").textContent = failedToday.length;
+      },
+
+      filterCollections() {
+        const search = document.getElementById("search-input").value.toLowerCase();
+        const statusFilter = document.getElementById("status-filter").value;
+        const channelFilter = document.getElementById("channel-filter").value;
+
+        this.filteredCollections = this.collections.filter(c => {
+          const matchesSearch = !search || 
+            c.reference.toLowerCase().includes(search) ||
+            (c.external_reference && c.external_reference.toLowerCase().includes(search));
+          
+          const matchesStatus = !statusFilter || c.status === statusFilter;
+          const matchesChannel = !channelFilter || c.channel === channelFilter;
+
+          return matchesSearch && matchesStatus && matchesChannel;
+        });
+
+        this.renderCollections();
+      },
+
+      openModal(modalId) {
+        document.getElementById(`modal-${modalId}`).classList.remove("hidden");
+      },
+
+      closeModal(modalId) {
+        document.getElementById(`modal-${modalId}`).classList.add("hidden");
+        // Clear errors
+        const errorDiv = document.getElementById(`${modalId.startsWith('collect-') ? modalId.replace('collect-', '') + '-' : ''}error`);
+        if (errorDiv) errorDiv.classList.add("hidden");
+        // Clear form if it's a collection modal
+        if (modalId.startsWith('collect-')) {
+          const prefix = modalId.replace('collect-', '');
+          document.querySelectorAll(`#${modalId} input, #${modalId} textarea, #${modalId} select`).forEach(el => {
+            if (el.type !== 'hidden') el.value = '';
+          });
+        }
+      },
+
+      async createMobileCollection(event) {
+        event.preventDefault();
+        
+        const btn = document.getElementById("mm-submit-btn");
+        const loader = document.getElementById("mm-loader");
+        const errorDiv = document.getElementById("mm-error");
+
+        btn.disabled = true;
+        loader.classList.remove("hidden");
+        errorDiv.classList.add("hidden");
+
+        try {
+          const payload = {
+            organization_id: this.currentOrgId,
+            amount: parseFloat(document.getElementById("mm-amount").value),
+            phone: document.getElementById("mm-phone").value.trim(),
+            operator: document.getElementById("mm-operator").value,
+            external_reference: document.getElementById("mm-reference").value,
+            narration: document.getElementById("mm-narration").value || "Mobile Money Payment",
+            bearer: document.getElementById("mm-bearer").value
+          };
+
+          const res = await fetch(`${WORKER_URL}/api/collect/mobile-money`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            throw new Error(data.error || "Failed to create collection");
+          }
+
+          // Success - close modal and refresh
+          this.closeModal('collect-mobile');
+          await this.loadCollections();
+          
+          // Show success notification
+          this.showToast('success', `Collection created successfully!`, `Reference: ${data.data?.reference || payload.external_reference}`);
+        } catch (err) {
+          errorDiv.textContent = err.message;
+          errorDiv.classList.remove("hidden");
+          this.showToast('error', 'Failed to create collection', err.message);
+          console.error(err);
+        } finally {
+          btn.disabled = false;
+          loader.classList.add("hidden");
+        }
+      },
+
+      async createCardCollection(event) {
+        event.preventDefault();
+        
+        const btn = document.getElementById("card-submit-btn");
+        const loader = document.getElementById("card-loader");
+        const errorDiv = document.getElementById("card-error");
+
+        btn.disabled = true;
+        loader.classList.remove("hidden");
+        errorDiv.classList.add("hidden");
+
+        try {
+          const payload = {
+            organization_id: this.currentOrgId,
+            amount: parseFloat(document.getElementById("card-amount").value),
+            external_reference: document.getElementById("card-reference").value,
+            encrypted_data: document.getElementById("card-encrypted").value,
+            narration: document.getElementById("card-narration").value || "Card Payment"
+          };
+
+          const res = await fetch(`${WORKER_URL}/api/collect/card`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+          });
+
+          const data = await res.json();
+
+          if (!res.ok) {
+            throw new Error(data.error || "Failed to create collection");
+          }
+
+          // Success - close modal and refresh
+          this.closeModal('collect-card');
+          await this.loadCollections();
+          
+          this.showToast('success', 'Card collection created successfully!', `Reference: ${data.data?.reference || payload.external_reference}`);
+        } catch (err) {
+          errorDiv.textContent = err.message;
+          errorDiv.classList.remove("hidden");
+          this.showToast('error', 'Failed to create card collection', err.message);
+          console.error(err);
+        } finally {
+          btn.disabled = false;
+          loader.classList.add("hidden");
+        }
+      },
+
+      viewDetails(reference) {
+        const collection = this.collections.find(c => c.reference === reference);
+        if (!collection) return;
+
+        this.selectedCollection = collection;
+        const content = document.getElementById("details-content");
+
+        const statusClass = {
+          'pending': 'status-pending',
+          'success': 'status-success',
+          'failed': 'status-failed',
+          'pay-offline': 'status-pay-offline'
+        }[collection.status] || 'status-pending';
+
+        content.innerHTML = `
+          <div class="grid grid-cols-2 gap-4">
+            <div class="p-4 bg-slate-900/50 rounded-xl">
+              <p class="text-xs text-slate-400 mb-1">Reference</p>
+              <p class="font-mono text-sm text-blue-400 break-all">${collection.reference}</p>
+            </div>
+            <div class="p-4 bg-slate-900/50 rounded-xl">
+              <p class="text-xs text-slate-400 mb-1">External Reference</p>
+              <p class="font-mono text-sm break-all">${collection.external_reference || 'N/A'}</p>
+            </div>
+            <div class="p-4 bg-slate-900/50 rounded-xl">
+              <p class="text-xs text-slate-400 mb-1">Channel</p>
+              <p class="font-medium capitalize">${collection.channel.replace('-', ' ')}</p>
+            </div>
+            <div class="p-4 bg-slate-900/50 rounded-xl">
+              <p class="text-xs text-slate-400 mb-1">Status</p>
+              <span class="status-badge ${statusClass}">${collection.status}</span>
+            </div>
+            <div class="p-4 bg-slate-900/50 rounded-xl">
+              <p class="text-xs text-slate-400 mb-1">Amount</p>
+              <p class="text-2xl font-bold text-white">ZMW ${Number(collection.amount).toFixed(2)}</p>
+            </div>
+            <div class="p-4 bg-slate-900/50 rounded-xl">
+              <p class="text-xs text-slate-400 mb-1">Currency</p>
+              <p class="font-medium">${collection.currency || 'ZMW'}</p>
+            </div>
+            ${collection.channel === 'mobile-money' ? `
+            <div class="p-4 bg-slate-900/50 rounded-xl">
+              <p class="text-xs text-slate-400 mb-1">Operator</p>
+              <p class="font-medium capitalize">${collection.operator || 'N/A'}</p>
+            </div>
+            <div class="p-4 bg-slate-900/50 rounded-xl">
+              <p class="text-xs text-slate-400 mb-1">Phone</p>
+              <p class="font-medium">${collection.phone || 'N/A'}</p>
+            </div>
+            ` : ''}
+            <div class="p-4 bg-slate-900/50 rounded-xl">
+              <p class="text-xs text-slate-400 mb-1">Fee Bearer</p>
+              <p class="font-medium capitalize">${collection.bearer || 'merchant'}</p>
+            </div>
+            <div class="p-4 bg-slate-900/50 rounded-xl">
+              <p class="text-xs text-slate-400 mb-1">Initiated</p>
+              <p class="font-medium text-sm">${new Date(collection.initiated_at).toLocaleString()}</p>
+            </div>
+            ${collection.completed_at ? `
+            <div class="p-4 bg-slate-900/50 rounded-xl">
+              <p class="text-xs text-slate-400 mb-1">Completed</p>
+              <p class="font-medium text-sm">${new Date(collection.completed_at).toLocaleString()}</p>
+            </div>
+            ` : ''}
+            ${collection.fee ? `
+            <div class="p-4 bg-slate-900/50 rounded-xl">
+              <p class="text-xs text-slate-400 mb-1">Fee</p>
+              <p class="font-medium">ZMW ${Number(collection.fee).toFixed(2)}</p>
+            </div>
+            ` : ''}
+          </div>
+          
+          ${collection.lenco_response ? `
+          <div class="mt-4">
+            <p class="text-xs text-slate-400 mb-2">Lenco Response</p>
+            <pre class="p-4 bg-slate-900/50 rounded-xl text-xs text-slate-300 overflow-x-auto font-mono">${JSON.stringify(collection.lenco_response, null, 2)}</pre>
+          </div>
+          ` : ''}
+        `;
+
+        this.openModal('details');
+      },
+
+      async checkStatusFromModal() {
+        if (!this.selectedCollection) return;
+
+        const btn = document.getElementById("check-status-btn");
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = `<span class="loader"></span><span>Checking...</span>`;
+
+        try {
+          const res = await fetch(
+            `${WORKER_URL}/api/collections/${this.selectedCollection.reference}/status?organization_id=${this.currentOrgId}`
+          );
+          const data = await res.json();
+
+          if (res.ok && data.data) {
+            // Update local collection
+            const updated = { ...this.selectedCollection, ...data.data };
+            this.selectedCollection = updated;
+            
+            // Update in main array
+            const idx = this.collections.findIndex(c => c.reference === updated.reference);
+            if (idx !== -1) this.collections[idx] = updated;
+            
+            // Re-render details
+            this.viewDetails(updated.reference);
+            this.calculateStats();
+            
+            this.showToast('success', 'Status updated successfully!', `Current status: ${updated.status}`);
+          } else {
+            throw new Error(data.error || "Failed to check status");
+          }
+        } catch (err) {
+          this.showToast('error', 'Failed to check status', err.message);
+          console.error(err);
+        } finally {
+          btn.disabled = false;
+          btn.innerHTML = originalText;
+        }
+      },
+
+      async refreshData() {
+        const icon = document.getElementById("refresh-icon");
+        icon.style.animation = "spin 1s linear infinite";
+        
+        await this.loadCollections();
+        
+        setTimeout(() => {
+          icon.style.animation = "";
+        }, 1000);
+      },
+
+      logout() {
+        if (this.supabase) this.supabase.auth.signOut();
+        localStorage.removeItem('lenco_org_id');
+        location.reload();
+      },
+
+      // Toast notification system
+      showToast(type, title, message = '') {
+        const container = document.getElementById('toast-container');
+        const toast = document.createElement('div');
+        toast.className = `toast toast-${type}`;
+        
+        const icon = type === 'success' ? '✓' : type === 'error' ? '✕' : 'ℹ';
+        toast.innerHTML = `
+          <span class="text-xl">${icon}</span>
+          <div>
+            <p class="font-semibold">${title}</p>
+            ${message ? `<p class="text-sm opacity-90">${message}</p>` : ''}
+          </div>
+        `;
+        
+        container.appendChild(toast);
+        
+        // Auto remove after 5 seconds
+        setTimeout(() => {
+          toast.style.animation = 'fadeOut 0.3s ease-out';
+          setTimeout(() => toast.remove(), 300);
+        }, 5000);
+      }
+    };
+
+    // Auto-login check on page load
+    window.onload = async () => {
+      const savedOrgId = localStorage.getItem('lenco_org_id');
+      if (savedOrgId) {
+        app.currentOrgId = savedOrgId;
+      }
+    };
+  </script>
+</body>
+</html>

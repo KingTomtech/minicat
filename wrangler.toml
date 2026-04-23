@@ -1,0 +1,12 @@
+name = "lenco-payments-worker"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+
+[vars]
+ALLOWED_ORIGIN = "*"
+REQUIRE_API_KEY = "false"
+
+# Secrets (set via: wrangler secret put SECRET_NAME)
+# SUPABASE_URL
+# SUPABASE_ANON_KEY  
+# SUPABASE_SERVICE_ROLE
